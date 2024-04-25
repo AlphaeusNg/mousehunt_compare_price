@@ -1,11 +1,14 @@
 import requests
 import pandas as pd
+import openpyxl
+from tqdm import tqdm
 from pandas import json_normalize
 from datetime import datetime, timedelta
 
 MARKETPLACE_INFO_URL = "https://api-dev.markethunt.win/items"
 DISCORD_INFO_URL = "https://api.markethunt.win/otc/listings"
 TARIFF = 0.9
+SB_ITEM_ID = 114
 
 
 def retrieve_info_from_web(url: str):
@@ -119,7 +122,6 @@ marketplace_info_df = retrieve_info_from_web(MARKETPLACE_INFO_URL)
 discord_info_df = retrieve_info_from_web(DISCORD_INFO_URL)
 
 # Get SB price
-SB_ITEM_ID = 114
 SB_MARKET_PRICE = get_current_price(SB_ITEM_ID, marketplace_info_df)
 
 
@@ -145,7 +147,9 @@ def get_single_item_info(item_name, sb_price=None):
             int(discord_sb_price[-1]['latest_sb_quote']*SB_MARKET_PRICE), f"({SB_MARKET_PRICE}*{round(discord_sb_price[-1]['latest_sb_quote'],2)}SB)")
 
 
-def generate_csv(filepath="output"):
+def generate_csv(filepath="marketplace_comparison"):
+    current_datetime = datetime.now().strftime("%H-%M-%S_%d-%m-%Y")
+    filepath = f"{filepath}_{current_datetime}"
     # Lists to store results
     latest_discord_sb_prices_list = []
     latest_discord_gold_prices_list = []
@@ -155,7 +159,8 @@ def generate_csv(filepath="output"):
     better_to_buy_from_discord_list = []
 
     # Iterate through each item in marketplace_info_df
-    for index, row in marketplace_info_df.iterrows():
+    print("Generating comparison data...")
+    for _, row in tqdm(marketplace_info_df.iterrows(), total=len(marketplace_info_df)):
         item_id_to_search = row['item_info.item_id']
 
         # Get Discord SB price
@@ -194,10 +199,20 @@ def generate_csv(filepath="output"):
     marketplace_info_df['Difference in Marketplace - Discord (SB)'] = marketplace_minus_discord_sb_list
     marketplace_info_df['Better to buy from Discord?'] = better_to_buy_from_discord_list
 
-    # Apply formatting to the 'Better to buy from Discord?' column
-    styled_df = marketplace_info_df.style.applymap(lambda x: 'background-color: #00FF00' if x else 'background-color: #FF0000',
-                                       subset=['Better to buy from Discord?'])
+    # Apply row-wise styling based on the "Better to buy from Discord?" column
+    def color_row(row):
+        if row['Better to buy from Discord?'] == 'Nopey':
+            # Light red color
+            return ['background-color: #ff9999'] * len(row) # light red
+        elif row['Better to buy from Discord?'] == 'Yessu':
+            # Light green color
+            return ['background-color: #99ff99'] * len(row) # light green
+        else:
+            return [''] * len(row)
 
-    # Save the updated DataFrame to a new CSV file
-    marketplace_info_df.to_csv(f"{filepath}.csv", index=False)
+     # Apply the style to the DataFrame
+    styled_df = marketplace_info_df.style.apply(color_row, axis=1)
+
+    # Save the styled DataFrame to a new HTML file
     styled_df.to_html(f"{filepath}.html", index=False)
+    styled_df.to_excel(f"{filepath}.xlsx", index=False)
