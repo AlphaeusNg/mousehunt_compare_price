@@ -33,7 +33,7 @@ To run the script, follow these steps:
 ```bash
 python main.py <function_name> <item_name>
 ```
-Replace <function_name> with either `get_single_item_info` or `generate_csv`, and <item_name> with the name of the item you want to retrieve information for.
+Replace `<function_name>` with either `get_single_item_info` or `generate_csv`, and `<item_name>` with the name of the item you want to retrieve information for.
 
 ## Examples:
 
@@ -53,5 +53,7 @@ Marketplace: 3414107 Vs Discord price: 3779620 (14537*260.0SB)
 python main.py generate_csv
 ```
 
-**Output**
-creates a CSV and HTML file that contains all the different price points. ctrl-f for "yessu" to find items that are cheaper to purchase in discord, and "nopey" for items that are cheaper to purchase on the marketplace.
+**Output**: Creates a CSV and HTML file that contains all the different price points. 
+
+
+ctrl-f `yessu` to find items that are cheaper to purchase in discord, and `nopey` for items that are cheaper to purchase on the marketplace.
