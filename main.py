@@ -7,16 +7,17 @@ def main():
         return
 
     function_name = sys.argv[1]
-    if function_name == "get_single_item_info":
+    if function_name == "1":
         if len(sys.argv) < 3:
             print("Usage: python main.py get_single_item_info <item_name>")
             return
-        item_name = sys.argv[2]
+        item_name = sys.argv[2:]
         cu.get_single_item_info(item_name)
-    elif function_name == "generate_csv":
+    elif function_name == "2":
         cu.generate_csv()
     else:
         print("Invalid function name.")
 
 if __name__ == "__main__":
-    main()
+    # main()
+    cu.get_single_item_info("Rare Map Dust", num_days_ago=1)

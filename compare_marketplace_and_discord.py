@@ -49,7 +49,7 @@ def get_current_price(item_id, dataframe) -> None or int:
         return None
 
 
-def get_discord_sb_price(item_id, dataframe):
+def get_discord_sb_price(item_id, dataframe, num_days_ago=1):
     # Search for the item_id in the DataFrame
     item_row = dataframe[dataframe['item.item_id'] == item_id]
 
@@ -60,7 +60,7 @@ def get_discord_sb_price(item_id, dataframe):
 
         # Retrieve information using the retrieved listing_type
         item_info_df = retrieve_info_from_web(f"https://api.markethunt.win/otc/listings/{listing_type}/{item_id}")
-        result_data = get_newest_data(item_info_df)
+        result_data = get_newest_data(item_info_df, num_days_ago=num_days_ago)
         return result_data
     else:
         return None
@@ -76,9 +76,9 @@ def format_timestamp(timestamp):
     return formatted_timestamp
 
 
-def get_newest_data(dataframe, days_ago=1):
+def get_newest_data(dataframe, num_days_ago=1):
     # Filter data within the last `days_ago`
-    days_ago_date = datetime.utcnow() - timedelta(days=days_ago)
+    days_ago_date = datetime.utcnow() - timedelta(days=num_days_ago)
     filtered_data = dataframe[dataframe['timestamp'] >= days_ago_date.timestamp() * 1000]
 
     # Check if filtered_data is empty
@@ -121,33 +121,40 @@ def get_item_id(dataframe, item_name):
 marketplace_info_df = retrieve_info_from_web(MARKETPLACE_INFO_URL)
 discord_info_df = retrieve_info_from_web(DISCORD_INFO_URL)
 
-# Get SB price
+# To buy a SB price
 SB_MARKET_PRICE = get_current_price(SB_ITEM_ID, marketplace_info_df)
 
 
-def get_single_item_info(item_name, sb_price=None):
+def get_single_item_info(item_name, sb_price=None, num_days_ago=1):
     item_id_to_search = get_item_id(marketplace_info_df, item_name)
-    discord_sb_price = get_discord_sb_price(item_id_to_search, discord_info_df) if sb_price is None else sb_price
+    discord_sb_price = get_discord_sb_price(item_id_to_search, discord_info_df, num_days_ago) if sb_price is None else sb_price
     marketplace_gold_price = get_current_price(item_id_to_search, marketplace_info_df)
 
-    if discord_sb_price is None and sb_price is None:
-        print("No discord price was found for this item, consider manually inputting the latest SB price")
-        print("marketplace_gold_price:", marketplace_gold_price)
-    else:
-        if sb_price is not None:
-            discord_sb_price = [{'latest_sb_quote': sb_price}]
-        print(
-            f"Amount of SB to sell in Marketplace (factor * {TARIFF} tariffs) to buy item with gold from Marketplace vs just trading SB "
-            "for item (Discord):\n" + "Marketplace:",
-            round(marketplace_gold_price / (SB_MARKET_PRICE * TARIFF), 2), "Vs", "Discord price:",
-            discord_sb_price[-1]['latest_sb_quote'])
-        print(
-            f"Amount of Gold to buy in Marketplace vs Gold equivalent of buying in Discord for item:\n"
-            f"Marketplace:", marketplace_gold_price, "Vs", "Discord price:",
-            int(discord_sb_price[-1]['latest_sb_quote']*SB_MARKET_PRICE), f"({SB_MARKET_PRICE}*{round(discord_sb_price[-1]['latest_sb_quote'],2)}SB)")
+    while True:
+        try:
+            if discord_sb_price[0]['latest_sb_quote'] is None:
+                print("No discord price was found for this item, please manually input the latest SB price")
+                discord_sb_price[0]['latest_sb_quote'] = int(input("SB price of item in discord: "))
+            else:
+                if sb_price is not None:
+                    discord_sb_price = [{'latest_sb_quote': sb_price}]
+                print(
+                    f"Amount of SB to sell in Marketplace (factor * {TARIFF} tariffs) to buy item with gold from Marketplace vs just trading SB "
+                    "for item (Discord):\n" + "Marketplace:",
+                    round(marketplace_gold_price / (SB_MARKET_PRICE * TARIFF), 2), "Vs", "Discord price:",
+                    discord_sb_price[-1]['latest_sb_quote'])
+                print(
+                    f"Amount of Gold to buy in Marketplace vs Gold equivalent of buying in Discord for item:\n"
+                    f"Marketplace:", marketplace_gold_price, "Vs", "Discord price:",
+                    int(discord_sb_price[-1]['latest_sb_quote'] * SB_MARKET_PRICE), f"({SB_MARKET_PRICE}*{round(discord_sb_price[-1]['latest_sb_quote'],2)}SB)")
+                break
+        except ValueError:
+            print("Invalid input, please enter a numeric value for the SB price.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            continue
 
-
-def generate_csv(filepath="marketplace_comparison"):
+def generate_csv(filepath="marketplace_comparison", num_days_ago=1):
     current_datetime = datetime.now().strftime("%H-%M-%S_%d-%m-%Y")
     filepath = f"{filepath}_{current_datetime}"
     # Lists to store results
@@ -164,7 +171,7 @@ def generate_csv(filepath="marketplace_comparison"):
         item_id_to_search = row['item_info.item_id']
 
         # Get Discord SB price
-        discord_sb_price = get_discord_sb_price(item_id_to_search, discord_info_df)
+        discord_sb_price = get_discord_sb_price(item_id_to_search, discord_info_df, num_days_ago)
         # Get Marketplace Gold price
         marketplace_gold_price = get_current_price(item_id_to_search, marketplace_info_df)
 
@@ -175,7 +182,12 @@ def generate_csv(filepath="marketplace_comparison"):
 
         else:
             discord_sb_price = discord_sb_price[-1]['latest_sb_quote']
-            discord_gold_price = discord_sb_price * SB_MARKET_PRICE * TARIFF
+            discord_gold_price = discord_sb_price * SB_MARKET_PRICE # SB * cost_to_buy_sb in marketplace
+
+            # Future 2 scenarios
+            # If you have enough gold to buy from marketplace, calculate the SB equivalent to convert the gold to SB and find the difference
+
+            # If you have enough SB to buy from discord, calculate the gold equivalent to convert the SB to gold and find the difference
 
             # Calculate difference
             marketplace_minus_discord_gold = int(marketplace_gold_price - discord_sb_price * SB_MARKET_PRICE * (TARIFF + 0.2))
@@ -193,12 +205,15 @@ def generate_csv(filepath="marketplace_comparison"):
 
     # Add new columns to the DataFrame
     marketplace_info_df['Discord_SB_Price'] = latest_discord_sb_prices_list
-    marketplace_info_df['Discord_Gold_Price'] = latest_discord_gold_prices_list
+    marketplace_info_df['Discord_Gold_equivalent'] = latest_discord_gold_prices_list
     marketplace_info_df['Marketplace_Gold_Price'] = latest_marketplace_gold_prices_list
     marketplace_info_df['Difference in Marketplace - Discord (Gold)'] = marketplace_minus_discord_gold_list
     marketplace_info_df['Difference in Marketplace - Discord (SB)'] = marketplace_minus_discord_sb_list
     marketplace_info_df['Better to buy from Discord?'] = better_to_buy_from_discord_list
 
+    # Sort DataFrame by "Better to buy from Discord?" column
+    marketplace_info_df.sort_values(by='Better to buy from Discord?', ascending=False, inplace=True)
+    
     # Apply row-wise styling based on the "Better to buy from Discord?" column
     def color_row(row):
         if row['Better to buy from Discord?'] == 'Nopey':
